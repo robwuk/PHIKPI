@@ -1,11 +1,9 @@
 
 # Errors
-# objective update save not working
+# 
 
 ################################################################################
 # Next Steps
-# double click on dashboard update to show detail
-# add a count of "objectives without any update" and add a tab
 # export dashboard to PPT  - intro, totals & reds/ambers
 # "save complete" box on each save
 # check column names throughout
@@ -33,6 +31,8 @@ library(shinymanager)
 library(shinyWidgets)
 library(data.table)   
 library(DT)
+library(officer)
+
 
 
 linebreaks <- function(n){HTML(strrep(br(), n))}
@@ -96,6 +96,7 @@ Red_Updates <- ""
 Amber_Updates <- ""
 Green_Updates <- ""
 Complete_Updates <- ""
+Without_Updates <- ""
 
 #Make user interface
 ui <- dashboardPage(
@@ -190,6 +191,65 @@ server <- function(input, output, session) {
   AmberRow <- reactive({Amber_Updates})
   GreenRow <- reactive({Green_Updates})
   CompleteRow <- reactive({Complete_Updates})
+  WithoutRow <- reactive({Without_Updates})
+  
+  # Create dashboard powerpoint slide
+  output$generatePPT <- downloadHandler(
+    filename = function() {
+      paste0(Global_Board_Acronym, "_slides_", Global_Board_Date, ".pptx")
+    },
+    content = function(file) {
+      #TITLE SLIDE
+      boardName <- filter(boards, Board_Acronym == Global_Board_Acronym)
+      
+      doc <- read_pptx()
+      doc <- add_slide(doc, layout = "Title Slide", master = "Office Theme")
+      doc <- ph_with(doc, boardName$Board_Name, location = ph_location_type(type = "ctrTitle"))
+      doc <- ph_with(doc, format(Global_Board_Date, "%d/%m/%Y"), location = ph_location_type(type = "subTitle"))
+      
+      #STATISTICS SLIDE
+      doc <- add_slide(doc, layout = "Blank", master = "Office Theme")
+      
+      val1 <- paste("Red:", nrow(Red_Updates))
+      val2 <- paste("Amber:", nrow(Amber_Updates))
+      val3 <- paste("Green:", nrow(Green_Updates))
+      val4 <- paste("Complete:", nrow(Complete_Updates))
+      
+      texts <- c(val1, val2, val3, val4)
+      colors <- c("red", "yellow", "green", "blue")
+      
+      # Panel positions in a 2x2 grid
+      positions <- list(
+        list(left = 0.5, top = 1.0),
+        list(left = 5.0, top = 1.0),
+        list(left = 0.5, top = 3.0),
+        list(left = 5.0, top = 3.0)
+      )
+      
+      # Add each panel to the slide
+      # Loop through each panel and add styled shape
+      for (i in 1:4) {
+        doc <- ph_with(
+          doc,
+          value = block_list(
+            fpar(
+              ftext(texts[i], fp_text(color = "black", font.size = 14))#,
+              #fp_p(text.align = "center")
+            )
+          ),
+          location = ph_location(
+            left = positions[[i]]$left,
+            top = positions[[i]]$top,
+            width = 4,
+            height = 1.5
+          ),
+          bg = "red"
+        )
+      }
+      
+      print(doc, target = file)
+    }
+  )
   
   # About screen
   output$about <- renderUI({
@@ -477,9 +537,12 @@ server <- function(input, output, session) {
                           weekstart = 1             # Week starts on Monday
                         )
         )
-        )
-      ),
-      
+        )),
+        
+#        fluidRow(column(12,
+ #                       align = "center", 
+  #                      downloadButton("generatePPT", "Create PowerPoint", icon = icon("pen-to-square"))),
+   #     )),
       
       box(
         title = "Board Overview:",
@@ -487,7 +550,7 @@ server <- function(input, output, session) {
         
         fluidRow(
           valueBoxOutput("numberOfActions", width = 2),
-          valueBoxOutput("numberOfRisks", width = 2),
+          valueBoxOutput("numberWithoutUpdate", width = 2),
           valueBoxOutput("numberOfRed", width = 2),
           valueBoxOutput("numberOfAmber", width = 2),
           valueBoxOutput("numberOfGreen", width = 2),
@@ -525,22 +588,9 @@ server <- function(input, output, session) {
                        tabPanel(tagList(icon("circle-exclamation"), "Amber"), DT::dataTableOutput("Amber_Updates")),
                        tabPanel(tagList(icon("circle-check"), "Green"), DT::dataTableOutput("Green_Updates")),
                        tabPanel(tagList(icon("check-double"), "Complete"), DT::dataTableOutput("Complete_Updates")),
+                       tabPanel(tagList(icon("check-double"), "No Updates"), DT::dataTableOutput("Without_Updates")),
                      )
                    )
-                 )
-        ),
-        tabPanel("Risks", 
-                 fluidRow(
-                   box(
-                     width = 12,
-                     DT::dataTableOutput("BoardRisks")
-                   ),
-                 ), 
-                 fluidRow(
-                   column(6, align = "center",
-                          actionButton("editBoardRisk", "Edit Risk", icon = icon("pen-to-square"))),
-                   column(6, align = "center",
-                          actionButton("addBoardRisk", "Add Risk", icon = icon("plus")))
                  )
         )
       )
@@ -1288,7 +1338,7 @@ server <- function(input, output, session) {
     showModal(modalDialog(
       
       title = paste("Add update"),
-      selectInput("RAGStatus", "RAG Status:", choices = c("Red", "Amber", "Green", "Complete")),
+      selectInput("addRAGStatus", "RAG Status:", choices = c("Red", "Amber", "Green", "Complete")),
       dateInput("update_Date", "Date of Update:", value = Sys.Date(), format ="dd/mm/yyyy"),
       textAreaInput("update_Text", "Update:", 
                     width = "100%", 
@@ -1332,6 +1382,9 @@ server <- function(input, output, session) {
         }
         
         removeModal()
+        enable("editObjectiveUpdate")
+        
+        print(input$RAGStatus)
         
         date <- input$update_Date
         parsed_date <- as.Date(date, format = "%Y/%m/%d")
@@ -1340,7 +1393,7 @@ server <- function(input, output, session) {
         newUpdate <- data.frame(Board_Acronym = Global_Board_Acronym,
                                 ObjectiveID = Global_Objective_ID,
                                 Date = gsub("-", "/", formatted_date),
-                                RAG = input$RAGStatus,
+                                RAG = input$addRAGStatus,
                                 Update = input$update_Text,
                                 Return_to_Green = input$return_To_Green)
         
@@ -1386,19 +1439,22 @@ server <- function(input, output, session) {
           objectiveUpdates <- read_csv(objectiveUpdatesFile)
         }
         
-        removeModal()
-        
+
         date <- input$update_Date
         parsed_date <- as.Date(date, format = "%Y/%m/%d")
         formatted_date <- format(parsed_date, "%d/%m/%Y")
         
+        enable("editObjectiveUpdate")
+        print(input$addRAGStatus)
+        
         newUpdate <- data.frame(Board_Acronym = Global_Board_Acronym,
                                 ObjectiveID = Global_Objective_ID,
                                 Date = gsub("-", "/", formatted_date),
-                                RAG = input$RAGStatus,
+                                RAG = input$addRAGStatus,
                                 Update = input$update_Text,
                                 Return_to_Green = input$return_To_Green)
         
+        removeModal()
         
         objectiveUpdates <- rbind(objectiveUpdates, newUpdate)
         file.rename(objectiveUpdatesFile, "data/Objective_Updates_old.csv")
@@ -1729,6 +1785,29 @@ server <- function(input, output, session) {
     ))
   })
   
+  # Green_Updates On-Click
+  observe({
+    req(input$Without_Updates_rows_selected)
+    
+    selRow <- input$Without_Updates_rows_selected
+    data <- WithoutRow()[selRow, ] 
+    
+    row_ui <- lapply(names(data), function(col_name) {
+      tags$p(
+        tags$strong(paste0(col_name, ": ")),
+        as.character(data[[col_name]])
+      )
+    })
+    
+    showModal(modalDialog(
+      
+      title = "Update Detail",
+      do.call(tagList, row_ui),
+      easyClose = TRUE
+      
+    ))
+  })
+  
   # Source On-Click
   observe({
     req(input$source_rows_selected)
@@ -1852,13 +1931,19 @@ server <- function(input, output, session) {
       )
     } else {
       boardObjectiveList <- filter(board_objective_detail, board_objective_detail$Lead %like% projectLead)
+      
+      if (nrow(boardObjectiveList == 0)) {
+        disable("editObjectiveUpdate")
+      } else {
+        enable("editObjectiveUpdate")
+      }
+      
       updateSelectInput(
         session,
         "projectObjectives",
         choices = setNames(boardObjectiveList$ObjectiveID, boardObjectiveList$Description)
       )
     }
-    
     
   })
   
@@ -2152,6 +2237,39 @@ server <- function(input, output, session) {
         )
     })
     
+    Without_Updates <<- anti_join(objectives, boardObjectiveUpdates, by = c("Activity_ID" = "ObjectiveID"))
+    Without_Updates <<- inner_join(Without_Updates, boardobjectives, by = c("Activity_ID" = "ObjectiveID")) 
+    Without_Updates <<- filter(Without_Updates, (Board_Acronym == Global_Board_Acronym))
+    Without_Updates <<- Without_Updates[, -ncol(Without_Updates)]
+    
+    output$Without_Updates <<- DT::renderDataTable({datatable(Without_Updates, rownames = FALSE,  options = list(
+      dom = 't',
+      pageLength = 5,
+      columnDefs = list(
+        list(
+          targets = c(6), # Column index (0-based)
+          render = JS(
+            "function(data, type, row, meta) {",
+            "  if (type === 'display' && data.length > 40) {",
+            "    return '<span title=\"' + Red_Updates + '\">' + data.substr(0, 40) + '…</span>';",
+            "  } else {",
+            "    return data;",
+            "  }",
+            "}"
+          ))
+      )),
+      selection = 'single', width = "100%")
+    })
+    
+    output$numberWithoutUpdate <-renderValueBox({
+      value <- nrow(Without_Updates)
+      valueBox(
+        value = value,
+        subtitle = "No. Without Update",
+        color = "black"
+      )
+    })
+    
     BoardAction_filtered <<- filter(boardActions, 
                                     (Board_Acronym == Global_Board_Acronym)) %>%
       select(-Board_Acronym)
@@ -2229,6 +2347,9 @@ server <- function(input, output, session) {
     disable("editObjectiveUpdate")
     disable("addObjectiveUpdate")
   }
+  
+  
+  
   
 }
 
