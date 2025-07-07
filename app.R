@@ -92,6 +92,10 @@ latestUpdate <- ""
 objectiveUpdates_filtered <- ""
 allLeads <- ""
 BoardAction_filtered <- ""
+Red_Updates <- ""
+Amber_Updates <- ""
+Green_Updates <- ""
+Complete_Updates <- ""
 
 #Make user interface
 ui <- dashboardPage(
@@ -182,6 +186,10 @@ server <- function(input, output, session) {
   ProductBoardActions <- reactive({BoardAction_filtered})
   output$source <- DT::renderDataTable(KPI_source, selection = 'single', rownames = FALSE)
   output$board <- DT::renderDataTable(boards, selection = 'single', rownames = FALSE)
+  RedRow <- reactive({Red_Updates})
+  AmberRow <- reactive({Amber_Updates})
+  GreenRow <- reactive({Green_Updates})
+  CompleteRow <- reactive({Complete_Updates})
   
   # About screen
   output$about <- renderUI({
@@ -1539,10 +1547,8 @@ server <- function(input, output, session) {
     selRow <- input$BoardActions_rows_selected
     data <- ProductBoardActions()[selRow, ] 
     
-    
     showModal(modalDialog(
       title = paste("Edit", Global_Board_Acronym, "action", data$Reference, sep = " "),
-      #dateInput("Action_Date", "Action Creation Date:", value = Sys.Date(), format ="dd/mm/yyyy"),
       textAreaInput("action_Text", "Action:", 
                     data$ActionDesc,
                     width = "100%", 
@@ -1629,6 +1635,98 @@ server <- function(input, output, session) {
       
       output$BoardActions <- DT::renderDataTable({datatable(BoardAction_filtered, rownames = FALSE, selection = 'single', width = "100%")})
     }
+  })
+  
+  # Red_Updates On-Click
+  observe({
+    req(input$Red_Updates_rows_selected)
+    
+    selRow <- input$Red_Updates_rows_selected
+    data <- RedRow()[selRow, ] 
+    
+    row_ui <- lapply(names(data), function(col_name) {
+      tags$p(
+        tags$strong(paste0(col_name, ": ")),
+        as.character(data[[col_name]])
+      )
+    })
+    
+    showModal(modalDialog(
+      
+      title = "Update Detail",
+      do.call(tagList, row_ui),
+      easyClose = TRUE
+      
+    ))
+  })
+  
+  # Amber_Updates On-Click
+  observe({
+    req(input$Amber_Updates_rows_selected)
+    
+    selRow <- input$Amber_Updates_rows_selected
+    data <- AmberRow()[selRow, ] 
+    
+    row_ui <- lapply(names(data), function(col_name) {
+      tags$p(
+        tags$strong(paste0(col_name, ": ")),
+        as.character(data[[col_name]])
+      )
+    })
+    
+    showModal(modalDialog(
+      
+      title = "Update Detail",
+      do.call(tagList, row_ui),
+      easyClose = TRUE
+      
+    ))
+  })
+  
+  # Green_Updates On-Click
+  observe({
+    req(input$Green_Updates_rows_selected)
+    
+    selRow <- input$Green_Updates_rows_selected
+    data <- GreenRow()[selRow, ] 
+    
+    row_ui <- lapply(names(data), function(col_name) {
+      tags$p(
+        tags$strong(paste0(col_name, ": ")),
+        as.character(data[[col_name]])
+      )
+    })
+    
+    showModal(modalDialog(
+      
+      title = "Update Detail",
+      do.call(tagList, row_ui),
+      easyClose = TRUE
+      
+    ))
+  })
+  
+  # Complete_Updates On-Click
+  observe({
+    req(input$Complete_Updates_rows_selected)
+    
+    selRow <- input$Complete_Updates_rows_selected
+    data <- CompleteRow()[selRow, ] 
+    
+    row_ui <- lapply(names(data), function(col_name) {
+      tags$p(
+        tags$strong(paste0(col_name, ": ")),
+        as.character(data[[col_name]])
+      )
+    })  
+    
+    showModal(modalDialog(
+      
+      title = "Update Detail",
+      do.call(tagList, row_ui),
+      easyClose = TRUE
+      
+    ))
   })
   
   # Source On-Click
@@ -1814,6 +1912,7 @@ server <- function(input, output, session) {
     updateDashboard()
   })
   
+  # Dashboard Screen - select board date
   observeEvent(input$boardDate, {
     Global_Board_Acronym <<- input$dashBoard
     Global_Board_Date <<- input$boardDate
@@ -1880,10 +1979,10 @@ server <- function(input, output, session) {
       latestUpdates$PreviousRAG = ""
     }
     
-    Red_Updates <- filter(latestUpdates, (RAG == "Red"))
-    Amber_Updates <- filter(latestUpdates, (RAG == "Amber"))
-    Green_Updates <- filter(latestUpdates, (RAG == "Green"))
-    Complete_Updates <- filter(latestUpdates, (RAG == "Complete"))
+    Red_Updates <<- filter(latestUpdates, (RAG == "Red"))
+    Amber_Updates <<- filter(latestUpdates, (RAG == "Amber"))
+    Green_Updates <<- filter(latestUpdates, (RAG == "Green"))
+    Complete_Updates <<- filter(latestUpdates, (RAG == "Complete"))
     
     output$numberOfRed <- renderValueBox({
       value <- nrow(Red_Updates)
@@ -1921,18 +2020,26 @@ server <- function(input, output, session) {
       )
     })
     
-    output$Red_Updates <- DT::renderDataTable({datatable(Red_Updates, rownames = FALSE, options = list(
+    output$Red_Updates <<- DT::renderDT({datatable(Red_Updates, rownames = FALSE, options = list(
       dom = 't',
       pageLength = 5,
       columnDefs = list(
-        list(width = '100px', targets = 0:1),
-        list(width = '75px', targets = 2),
+        list(width = '75px', targets = c(2, 5:7, 10:11)),
         list(width = '120px', targets = 3),
-        list(width = '100px', targets = 4),
-        list(width = '75px', targets = 5:7),
-        list(width = '100px', targets = 8:9),
-        list(width = '75px', targets = 10:11)
-      ), selection = 'single', width = "100%")) %>%
+        list(width = '100px', targets = c(0:1, 4, 8, 9)),
+        list(
+          targets = c(3, 8, 9), # Column index (0-based)
+          render = JS(
+            "function(data, type, row, meta) {",
+            "  if (type === 'display' && data.length > 40) {",
+            "    return '<span title=\"' + Red_Updates + '\">' + data.substr(0, 40) + '…</span>';",
+            "  } else {",
+            "    return data;",
+            "  }",
+            "}"
+          ))
+      ),
+      selection = 'single', width = "100%")) %>%
         formatStyle(columns = c("RAG", "PreviousRAG"),
                     "text-align" = 'center',
                     backgroundColor = styleEqual(
@@ -1946,18 +2053,26 @@ server <- function(input, output, session) {
         )
     })
     
-    output$Amber_Updates <- DT::renderDataTable({datatable(Amber_Updates, rownames = FALSE, options = list(
+    output$Amber_Updates <<- DT::renderDataTable({datatable(Amber_Updates, rownames = FALSE, options = list(
       dom = 't',
       pageLength = 5,
       columnDefs = list(
-        list(width = '100px', targets = 0:1),
-        list(width = '75px', targets = 2),
+        list(width = '75px', targets = c(2, 5:7, 10:11)),
         list(width = '120px', targets = 3),
-        list(width = '100px', targets = 4),
-        list(width = '75px', targets = 5:7),
-        list(width = '100px', targets = 8:9),
-        list(width = '75px', targets = 10:11)
-      ), selection = 'single', width = "100%"))  %>%
+        list(width = '100px', targets = c(0:1, 4, 8, 9)),
+        list(
+          targets = c(3, 8, 9), # Column index (0-based)
+          render = JS(
+            "function(data, type, row, meta) {",
+            "  if (type === 'display' && data.length > 40) {",
+            "    return '<span title=\"' + Red_Updates + '\">' + data.substr(0, 40) + '…</span>';",
+            "  } else {",
+            "    return data;",
+            "  }",
+            "}"
+          ))
+      ),
+      selection = 'single', width = "100%"))  %>%
         formatStyle(columns = c("RAG", "PreviousRAG"),
                     "text-align" = 'center',
                     backgroundColor = styleEqual(
@@ -1971,18 +2086,26 @@ server <- function(input, output, session) {
         )
     })
     
-    output$Green_Updates <- DT::renderDataTable({datatable(Green_Updates, rownames = FALSE,  options = list(
+    output$Green_Updates <<- DT::renderDataTable({datatable(Green_Updates, rownames = FALSE,  options = list(
       dom = 't',
       pageLength = 5,
       columnDefs = list(
-        list(width = '100px', targets = 0:1),
-        list(width = '75px', targets = 2),
+        list(width = '75px', targets = c(2, 5:7, 10:11)),
         list(width = '120px', targets = 3),
-        list(width = '100px', targets = 4),
-        list(width = '75px', targets = 5:7),
-        list(width = '100px', targets = 8:9),
-        list(width = '75px', targets = 10:11)
-      ), selection = 'single', width = "100%"))  %>%
+        list(width = '100px', targets = c(0:1, 4, 8, 9)),
+        list(
+          targets = c(3, 8, 9), # Column index (0-based)
+          render = JS(
+            "function(data, type, row, meta) {",
+            "  if (type === 'display' && data.length > 40) {",
+            "    return '<span title=\"' + Red_Updates + '\">' + data.substr(0, 40) + '…</span>';",
+            "  } else {",
+            "    return data;",
+            "  }",
+            "}"
+          ))
+      ),
+      selection = 'single', width = "100%"))  %>%
         formatStyle(columns = c("RAG", "PreviousRAG"),
                     "text-align" = 'center',
                     backgroundColor = styleEqual(
@@ -1996,18 +2119,26 @@ server <- function(input, output, session) {
         )
     })
     
-    output$Complete_Updates <- DT::renderDataTable({datatable(Complete_Updates, rownames = FALSE, options = list(
+    output$Complete_Updates <<- DT::renderDataTable({datatable(Complete_Updates, rownames = FALSE, options = list(
       dom = 't',
       pageLength = 5,
       columnDefs = list(
-        list(width = '100px', targets = 0:1),
-        list(width = '75px', targets = 2),
+        list(width = '75px', targets = c(2, 5:7, 10:11)),
         list(width = '120px', targets = 3),
-        list(width = '100px', targets = 4),
-        list(width = '75px', targets = 5:7),
-        list(width = '100px', targets = 8:9),
-        list(width = '75px', targets = 10:11)
-      ), selection = 'single', width = "100%"))  %>%
+        list(width = '100px', targets = c(0:1, 4, 8, 9)),
+        list(
+          targets = c(3, 8, 9), # Column index (0-based)
+          render = JS(
+            "function(data, type, row, meta) {",
+            "  if (type === 'display' && data.length > 40) {",
+            "    return '<span title=\"' + Red_Updates + '\">' + data.substr(0, 40) + '…</span>';",
+            "  } else {",
+            "    return data;",
+            "  }",
+            "}"
+          ))
+      ),
+      selection = 'single', width = "100%"))  %>%
         formatStyle(columns = c("RAG", "PreviousRAG"),
                     "text-align" = 'center',
                     backgroundColor = styleEqual(
@@ -2039,19 +2170,6 @@ server <- function(input, output, session) {
     
     output$BoardActions <- DT::renderDataTable({datatable(BoardAction_filtered, rownames = FALSE, selection = 'single', width = "100%")})
   }
-  
-  observeEvent(input$Red_Updates_cell_dblclick, {
-    #info <- input$mytable_cell_dblclick
-    #row <- info$row
-    #col <- info$col
-    #value <- iris[row, col]
-    
-    showModal(modalDialog(
-      title = paste("Hello"),
-      paste("You double-clicked on:"),
-      easyClose = TRUE
-    ))
-  })
   
   output$statusBox <- renderValueBox({
     status_color <- switch(input$RAGStatus,
